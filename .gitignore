@@ -1,0 +1,63 @@
+# Byte-compiled / optimized / DLL files
+*.py[cod]
+__pycache__/
+
+# Cython debug symbols
+cython_debug/
+
+# Virtual environment directories
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Distribution / packaging
+*.egg-info/
+*.eggs/
+dist/
+build/
+*.tar.gz
+*.whl
+
+# Python wheels
+*.whl
+
+# Pytest cache
+.cache/
+
+# IDE and editor directories
+.vscode/
+.idea/
+
+# MacOS specific files
+.DS_Store
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# Python logs
+*.log
+
+# Environment variable files
+.env
+.env.local
+.env.*.local
+
+# MySQL database
+*.sql
+
+# SQLite database
+*.sqlite3
+
+
+**.json
+**__pycache__
+
+**.xlsx
+
+**.zip
+
+files/
+
+env_dump_vitals
