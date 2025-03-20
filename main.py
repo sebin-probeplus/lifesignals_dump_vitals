@@ -3,29 +3,32 @@ import os
 import sys
 import copy
 import pytz
+import argparse
 from datetime import datetime
 
 import pandas as pd
 
-from user_config import input_file_path, bcast_file_path, required_vitals, time_interval
+from user_config import required_vitals
 from default_config import tb, tf, posture_map
 
 
 class DumpVitals:
-    def __init__(self, debug=False):
-        self.debug = debug
-        self.input_filepath = input_file_path
-        self.start_time = self.get_start_time(bcast_file_path)
+    def __init__(self, args):
+        self.patchid = None
+        self.start_time = None
+        self.tz = pytz.timezone(args.timezone)
+        self.debug = args.debug
+        self.input_filepath = args.filepath
+        self.get_start_time_and_patchid(args.bcastpath)
         self.start_time_str = ""
         self.data = []
         self.req_vitals = required_vitals
-        self.t_interval = time_interval
-        self.tol_before = (tb / 100) * time_interval
-        self.tol_after = (tf / 100) * time_interval
+        self.t_interval = args.timeinterval
+        self.tol_before = (tb / 100) * args.timeinterval
+        self.tol_after = (tf / 100) * args.timeinterval
         self.posture_map = posture_map
         self.required_keys = []
         self.extracted_data = {}
-        self.patchid = "BXSBX"
         self.final_data = []
         self.main()
 
@@ -35,36 +38,43 @@ class DumpVitals:
         df = pd.DataFrame(self.final_data, columns=columns)
         df.to_excel("output.xlsx", index=False, engine="openpyxl")
 
-    def get_start_time(self, bcast_filepath):
-        if os.path.isfile(bcast_filepath):
-            try:
-                with open(bcast_filepath, "r") as bcast_json:
-                    bcast_data = json.load(bcast_json)
-                    return bcast_data.get("Capability", {}).get("StartTime", None)
-            except json.JSONDecodeError:
-                print("Invalid JSON format in the Broadcast file")
-                return None
-        else:
-            print("Invalid Broadcast file path")
-            return None
+    def get_start_time_and_patchid(self, bcast_filepath):
+        try:
+            with open(bcast_filepath, "r") as bcast_json:
+                bcast_data = json.load(bcast_json)
+                self.patchid = bcast_data.get("PatchInfo", {}).get("PatchId", None)
+                self.start_time = bcast_data.get("Capability", {}).get(
+                    "StartTime", None
+                )
+        except json.JSONDecodeError:
+            print("Invalid JSON format in the Broadcast file")
+            sys.exit(1)
 
     def epoch_to_str(self, epoch):
-        adelaide_tz = pytz.timezone("Australia/Adelaide")
-        dt = datetime.fromtimestamp(epoch, adelaide_tz)
+        dt = datetime.fromtimestamp(epoch, self.tz)
         return dt.strftime("%d-%b-%y")
 
     def epoch_to_time(self, epoch):
-        adelaide_tz = pytz.timezone("Australia/Adelaide")
-        dt = datetime.fromtimestamp(epoch, adelaide_tz)
+        dt = datetime.fromtimestamp(epoch, self.tz)
         return dt.strftime("%H:%M:%S")
 
-    def validate_start_time(self):
+    def validate_start_time_and_patchid(self):
         if not self.start_time:
             print("StartTime Not Found")
             sys.exit(1)
         else:
             self.start_time = round(self.start_time // 60) * 60
             self.start_time_str = self.epoch_to_str(self.start_time)
+
+        if not self.patchid:
+            print("patchid Not Found")
+            sys.exit(1)
+        else:
+            if len(self.patchid) == 5:
+                self.patchid = str(self.patchid).upper()
+            else:
+                print("Invalid patchid")
+                sys.exit(1)
 
     def extract_vitals(self, line_data, extracted_data, line_time, reference_time):
         time_diff = abs(reference_time - line_time)
@@ -185,7 +195,7 @@ class DumpVitals:
             if value:
                 self.required_keys.append(key)
                 self.extracted_data[key] = {"value": "", "time_diff": float("inf")}
-        self.validate_start_time()
+        self.validate_start_time_and_patchid()
 
         print("patch:", self.patchid)
         print("required_vitals:", self.required_keys)
@@ -202,4 +212,46 @@ class DumpVitals:
 
 
 if __name__ == "__main__":
-    dumpvitals = DumpVitals(debug=False)
+    parser = argparse.ArgumentParser(
+        description="Run the DumpVitals script with arguments."
+    )
+
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+
+    parser.add_argument(
+        "--filepath", type=str, required=True, help="Path to the JSON file"
+    )
+
+    parser.add_argument(
+        "--bcastpath", type=str, required=True, help="Path to the bcast file"
+    )
+
+    parser.add_argument(
+        "--timezone", type=str, required=False, help="Timezone for parsing epoch"
+    )
+
+    parser.add_argument(
+        "--timeinterval",
+        type=int,
+        required=True,
+        help="Interval at which valid data is dumped (in seconds)",
+    )
+
+    args = parser.parse_args()
+
+    if not os.path.isfile(args.filepath) or not args.filepath.endswith(".json"):
+        print("Invalid JSON file path")
+
+    if not os.path.isfile(args.bcastpath) or not args.bcastpath.endswith(".json"):
+        print("Invalid bcast file path")
+
+    if args.timeinterval < 1:
+        print("Invalid time interval")
+
+    if args.timezone:
+        if args.timezone not in pytz.all_timezones:
+            print("Invalid timezone")
+    else:
+        args.timezone = "Australia/Adelaide"
+
+    dumpvitals = DumpVitals(args=args)
